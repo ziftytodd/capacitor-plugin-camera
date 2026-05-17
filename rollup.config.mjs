@@ -7,6 +7,8 @@ export default {
       name: 'capacitorCameraPreview',
       globals: {
         '@capacitor/core': 'capacitorExports',
+        'dynamsoft-camera-enhancer': 'dynamsoftCameraEnhancer',
+        recordrtc: 'RecordRTC',
       },
       sourcemap: true,
       inlineDynamicImports: true,
@@ -18,5 +20,5 @@ export default {
       inlineDynamicImports: true,
     },
   ],
-  external: ['@capacitor/core'],
+  external: ['@capacitor/core', 'dynamsoft-camera-enhancer', 'recordrtc'],
 };
