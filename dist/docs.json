@@ -1,0 +1,495 @@
+{
+  "api": {
+    "name": "CameraPreviewPlugin",
+    "slug": "camerapreviewplugin",
+    "docs": "",
+    "tags": [],
+    "methods": [
+      {
+        "name": "initialize",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "initialize"
+      },
+      {
+        "name": "getResolution",
+        "signature": "() => Promise<{ resolution: string; }>",
+        "parameters": [],
+        "returns": "Promise<{ resolution: string; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "getresolution"
+      },
+      {
+        "name": "setResolution",
+        "signature": "(options: { resolution: number; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ resolution: number; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "setresolution"
+      },
+      {
+        "name": "getAllCameras",
+        "signature": "() => Promise<{ cameras: string[]; }>",
+        "parameters": [],
+        "returns": "Promise<{ cameras: string[]; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "getallcameras"
+      },
+      {
+        "name": "getSelectedCamera",
+        "signature": "() => Promise<{ selectedCamera: string; }>",
+        "parameters": [],
+        "returns": "Promise<{ selectedCamera: string; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "getselectedcamera"
+      },
+      {
+        "name": "selectCamera",
+        "signature": "(options: { cameraID: string; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ cameraID: string; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "selectcamera"
+      },
+      {
+        "name": "setScanRegion",
+        "signature": "(options: { region: ScanRegion; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ region: ScanRegion; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "ScanRegion"
+        ],
+        "slug": "setscanregion"
+      },
+      {
+        "name": "setZoom",
+        "signature": "(options: { factor: number; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ factor: number; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "setzoom"
+      },
+      {
+        "name": "setFocus",
+        "signature": "(options: { x: number; y: number; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ x: number; y: number; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "setfocus"
+      },
+      {
+        "name": "setDefaultUIElementURL",
+        "signature": "(url: string) => Promise<void>",
+        "parameters": [
+          {
+            "name": "url",
+            "docs": "",
+            "type": "string"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "Web Only",
+        "complexTypes": [],
+        "slug": "setdefaultuielementurl"
+      },
+      {
+        "name": "setElement",
+        "signature": "(ele: any) => Promise<void>",
+        "parameters": [
+          {
+            "name": "ele",
+            "docs": "",
+            "type": "any"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "Web Only",
+        "complexTypes": [
+          "HTMLElement"
+        ],
+        "slug": "setelement"
+      },
+      {
+        "name": "startCamera",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "startcamera"
+      },
+      {
+        "name": "stopCamera",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "stopcamera"
+      },
+      {
+        "name": "takeSnapshot",
+        "signature": "(options: { quality?: number; }) => Promise<{ base64: string; }>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ quality?: number | undefined; }"
+          }
+        ],
+        "returns": "Promise<{ base64: string; }>",
+        "tags": [],
+        "docs": "take a snapshot as base64.",
+        "complexTypes": [],
+        "slug": "takesnapshot"
+      },
+      {
+        "name": "saveFrame",
+        "signature": "() => Promise<{ success: boolean; }>",
+        "parameters": [],
+        "returns": "Promise<{ success: boolean; }>",
+        "tags": [],
+        "docs": "save a frame internally. Android and iOS only.",
+        "complexTypes": [],
+        "slug": "saveframe"
+      },
+      {
+        "name": "takeSnapshot2",
+        "signature": "(options: { canvas: HTMLCanvasElement; maxLength?: number; }) => Promise<{ scaleRatio?: number; }>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ canvas: any; maxLength?: number | undefined; }"
+          }
+        ],
+        "returns": "Promise<{ scaleRatio?: number | undefined; }>",
+        "tags": [],
+        "docs": "take a snapshot on to a canvas. Web Only",
+        "complexTypes": [
+          "HTMLCanvasElement"
+        ],
+        "slug": "takesnapshot2"
+      },
+      {
+        "name": "takePhoto",
+        "signature": "(options: { pathToSave?: string; includeBase64?: boolean; }) => Promise<{ path?: string; base64?: string; blob?: Blob; }>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ pathToSave?: string | undefined; includeBase64?: boolean | undefined; }"
+          }
+        ],
+        "returns": "Promise<{ path?: string | undefined; base64?: string | undefined; blob?: any; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "Blob"
+        ],
+        "slug": "takephoto"
+      },
+      {
+        "name": "toggleTorch",
+        "signature": "(options: { on: boolean; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ on: boolean; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "toggletorch"
+      },
+      {
+        "name": "getOrientation",
+        "signature": "() => Promise<{ orientation: 'PORTRAIT' | 'LANDSCAPE'; }>",
+        "parameters": [],
+        "returns": "Promise<{ orientation: 'PORTRAIT' | 'LANDSCAPE'; }>",
+        "tags": [],
+        "docs": "get the orientation of the device.",
+        "complexTypes": [],
+        "slug": "getorientation"
+      },
+      {
+        "name": "startRecording",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "startrecording"
+      },
+      {
+        "name": "stopRecording",
+        "signature": "(options: { includeBase64?: boolean; }) => Promise<{ path?: string; base64?: string; blob?: Blob; }>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ includeBase64?: boolean | undefined; }"
+          }
+        ],
+        "returns": "Promise<{ path?: string | undefined; base64?: string | undefined; blob?: any; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "Blob"
+        ],
+        "slug": "stoprecording"
+      },
+      {
+        "name": "setLayout",
+        "signature": "(options: { top: string; left: string; width: string; height: string; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ top: string; left: string; width: string; height: string; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "setlayout"
+      },
+      {
+        "name": "requestCameraPermission",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "requestcamerapermission"
+      },
+      {
+        "name": "requestMicroPhonePermission",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "requestmicrophonepermission"
+      },
+      {
+        "name": "isOpen",
+        "signature": "() => Promise<{ isOpen: boolean; }>",
+        "parameters": [],
+        "returns": "Promise<{ isOpen: boolean; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "isopen"
+      },
+      {
+        "name": "addListener",
+        "signature": "(eventName: 'onPlayed', listenerFunc: onPlayedListener) => Promise<PluginListenerHandle>",
+        "parameters": [
+          {
+            "name": "eventName",
+            "docs": "",
+            "type": "'onPlayed'"
+          },
+          {
+            "name": "listenerFunc",
+            "docs": "",
+            "type": "onPlayedListener"
+          }
+        ],
+        "returns": "Promise<PluginListenerHandle>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "PluginListenerHandle",
+          "onPlayedListener"
+        ],
+        "slug": "addlisteneronplayed-"
+      },
+      {
+        "name": "addListener",
+        "signature": "(eventName: 'onOrientationChanged', listenerFunc: onOrientationChangedListener) => Promise<PluginListenerHandle>",
+        "parameters": [
+          {
+            "name": "eventName",
+            "docs": "",
+            "type": "'onOrientationChanged'"
+          },
+          {
+            "name": "listenerFunc",
+            "docs": "",
+            "type": "onOrientationChangedListener"
+          }
+        ],
+        "returns": "Promise<PluginListenerHandle>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "PluginListenerHandle",
+          "onOrientationChangedListener"
+        ],
+        "slug": "addlisteneronorientationchanged-"
+      },
+      {
+        "name": "removeAllListeners",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "removealllisteners"
+      }
+    ],
+    "properties": []
+  },
+  "interfaces": [
+    {
+      "name": "ScanRegion",
+      "slug": "scanregion",
+      "docs": "measuredByPercentage: 0 in pixel, 1 in percent",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "left",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number"
+        },
+        {
+          "name": "top",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number"
+        },
+        {
+          "name": "right",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number"
+        },
+        {
+          "name": "bottom",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number"
+        },
+        {
+          "name": "measuredByPercentage",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "PluginListenerHandle",
+      "slug": "pluginlistenerhandle",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "remove",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "() => Promise<void>"
+        }
+      ]
+    }
+  ],
+  "enums": [],
+  "typeAliases": [
+    {
+      "name": "onPlayedListener",
+      "slug": "onplayedlistener",
+      "docs": "",
+      "types": [
+        {
+          "text": "(result: { resolution: string; }): void",
+          "complexTypes": []
+        }
+      ]
+    },
+    {
+      "name": "onOrientationChangedListener",
+      "slug": "onorientationchangedlistener",
+      "docs": "",
+      "types": [
+        {
+          "text": "(): void",
+          "complexTypes": []
+        }
+      ]
+    }
+  ],
+  "pluginConfigs": []
+}

@@ -8,7 +8,33 @@ import AVFoundation
  * here: https://capacitorjs.com/docs/plugins/ios
  */
 @objc(CameraPreviewPlugin)
-public class CameraPreviewPlugin: CAPPlugin, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate {
+public class CameraPreviewPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate {
+    public let identifier = "CameraPreviewPlugin"
+    public let jsName = "CameraPreview"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "initialize", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getResolution", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setResolution", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getAllCameras", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getSelectedCamera", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getOrientation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "selectCamera", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setScanRegion", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setFocus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setLayout", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "saveFrame", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startCamera", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopCamera", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startRecording", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopRecording", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takeSnapshot", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takePhoto", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "toggleTorch", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestCameraPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestMicroPhonePermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "isOpen", returnType: CAPPluginReturnPromise),
+    ]
     
     var previewView: PreviewView!
     var captureSession: AVCaptureSession!
@@ -99,7 +125,9 @@ public class CameraPreviewPlugin: CAPPlugin, AVCaptureVideoDataOutputSampleBuffe
                     self.captureSession.addOutput(videoOutput)
                 }
                 
-                let interfaceOrientation = UIApplication.shared.windows.first?.windowScene?.interfaceOrientation
+                let interfaceOrientation = UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .first?.interfaceOrientation
                 if (interfaceOrientation == .landscapeLeft) {
                     self.previewView.videoPreviewLayer.connection?.videoOrientation = .landscapeLeft
                 } else if (interfaceOrientation == .landscapeRight) {
@@ -447,7 +475,11 @@ public class CameraPreviewPlugin: CAPPlugin, AVCaptureVideoDataOutputSampleBuffe
     
     func captureDevice(with position: AVCaptureDevice.Position) -> AVCaptureDevice? {
 
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: [ .builtInWideAngleCamera, .builtInMicrophone, .builtInDualCamera, .builtInTelephotoCamera ], mediaType: AVMediaType.video, position: .unspecified).devices
+        let devices = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .builtInMicrophone, .builtInDualCamera, .builtInTelephotoCamera],
+            mediaType: AVMediaType.video,
+            position: .unspecified
+        ).devices
 
         for device in devices {
             if device.position == position {
@@ -485,13 +517,13 @@ public class CameraPreviewPlugin: CAPPlugin, AVCaptureVideoDataOutputSampleBuffe
     }
     
     @objc func setFocus(_ call: CAPPluginCall) {
-        let x = call.getFloat("x", -1.0);
-        let y = call.getFloat("y", -1.0);
-        if x != -1.0 && y != -1.0 {
+        let focusX = call.getFloat("x", -1.0);
+        let focusY = call.getFloat("y", -1.0);
+        if focusX != -1.0 && focusY != -1.0 {
             let device = videoInput.device
             do {
                 try device.lockForConfiguration()
-                device.focusPointOfInterest = CGPoint(x: CGFloat(x), y: CGFloat(y))
+                device.focusPointOfInterest = CGPoint(x: CGFloat(focusX), y: CGFloat(focusY))
                 device.unlockForConfiguration()
             } catch {
                 print("Focues could not be used")

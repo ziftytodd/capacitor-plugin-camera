@@ -16,7 +16,6 @@ package com.tonyxlh.capacitor.camera;
  * limitations under the License.
  */
 
-
 import android.annotation.TargetApi;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -27,8 +26,8 @@ import android.graphics.YuvImage;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.os.Build.VERSION_CODES;
-import androidx.annotation.Nullable;
 import android.util.Log;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageProxy;
@@ -37,6 +36,7 @@ import java.nio.ByteBuffer;
 
 /** Utils functions for bitmap conversions. */
 public class BitmapUtils {
+
     private static final String TAG = "BitmapUtils";
 
     /** Converts NV21 format byte buffer to bitmap. */
@@ -46,9 +46,7 @@ public class BitmapUtils {
         byte[] imageInBuffer = new byte[data.limit()];
         data.get(imageInBuffer, 0, imageInBuffer.length);
         try {
-            YuvImage image =
-                    new YuvImage(
-                            imageInBuffer, ImageFormat.NV21, metadata.getWidth(), metadata.getHeight(), null);
+            YuvImage image = new YuvImage(imageInBuffer, ImageFormat.NV21, metadata.getWidth(), metadata.getHeight(), null);
             ByteArrayOutputStream stream = new ByteArrayOutputStream();
             image.compressToJpeg(new Rect(0, 0, metadata.getWidth(), metadata.getHeight()), 80, stream);
 
@@ -67,21 +65,18 @@ public class BitmapUtils {
     @Nullable
     @ExperimentalGetImage
     public static Bitmap getBitmap(ImageProxy image) {
-        FrameMetadata frameMetadata =
-                new FrameMetadata.Builder()
-                        .setWidth(image.getWidth())
-                        .setHeight(image.getHeight())
-                        .setRotation(image.getImageInfo().getRotationDegrees())
-                        .build();
+        FrameMetadata frameMetadata = new FrameMetadata.Builder()
+            .setWidth(image.getWidth())
+            .setHeight(image.getHeight())
+            .setRotation(image.getImageInfo().getRotationDegrees())
+            .build();
 
-        ByteBuffer nv21Buffer =
-                yuv420ThreePlanesToNV21(image.getImage().getPlanes(), image.getWidth(), image.getHeight());
+        ByteBuffer nv21Buffer = yuv420ThreePlanesToNV21(image.getImage().getPlanes(), image.getWidth(), image.getHeight());
         return getBitmap(nv21Buffer, frameMetadata);
     }
 
     /** Rotates a bitmap if it is converted from a bytebuffer. */
-    private static Bitmap rotateBitmap(
-            Bitmap bitmap, int rotationDegrees, boolean flipX, boolean flipY) {
+    private static Bitmap rotateBitmap(Bitmap bitmap, int rotationDegrees, boolean flipX, boolean flipY) {
         Matrix matrix = new Matrix();
 
         // Rotate the image back to straight.
@@ -89,8 +84,7 @@ public class BitmapUtils {
 
         // Mirror the image along the X or Y axis.
         matrix.postScale(flipX ? -1.0f : 1.0f, flipY ? -1.0f : 1.0f);
-        Bitmap rotatedBitmap =
-                Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+        Bitmap rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
 
         // Recycle the old bitmap if it has changed.
         if (rotatedBitmap != bitmap) {
@@ -117,8 +111,7 @@ public class BitmapUtils {
      * them to the NV21 array.
      */
     @RequiresApi(VERSION_CODES.KITKAT)
-    private static ByteBuffer yuv420ThreePlanesToNV21(
-            Plane[] yuv420888planes, int width, int height) {
+    private static ByteBuffer yuv420ThreePlanesToNV21(Plane[] yuv420888planes, int width, int height) {
         int imageSize = width * height;
         byte[] out = new byte[imageSize + 2 * (imageSize / 4)];
 
@@ -131,7 +124,7 @@ public class BitmapUtils {
             // Get the first V value from the V buffer, since the U buffer does not contain it.
             vBuffer.get(out, imageSize, 1);
             // Copy the first U value and the remaining VU values from the U buffer.
-            uBuffer.get(out, imageSize + 1, 2 * imageSize / 4 - 1);
+            uBuffer.get(out, imageSize + 1, (2 * imageSize) / 4 - 1);
         } else {
             // Fallback to copying the UV values one by one, which is slower but also works.
             // Unpack Y.
@@ -163,8 +156,7 @@ public class BitmapUtils {
         uBuffer.limit(uBufferLimit - 1);
 
         // Check that the buffers are equal and have the expected number of elements.
-        boolean areNV21 =
-                (vBuffer.remaining() == (2 * imageSize / 4 - 2)) && (vBuffer.compareTo(uBuffer) == 0);
+        boolean areNV21 = (vBuffer.remaining() == ((2 * imageSize) / 4 - 2)) && (vBuffer.compareTo(uBuffer) == 0);
 
         // Restore buffers to their initial state.
         vBuffer.position(vBufferPosition);
@@ -180,8 +172,7 @@ public class BitmapUtils {
      * spaced by 'pixelStride'. Note that there is no row padding on the output.
      */
     @TargetApi(VERSION_CODES.KITKAT)
-    private static void unpackPlane(
-            Plane plane, int width, int height, byte[] out, int offset, int pixelStride) {
+    private static void unpackPlane(Plane plane, int width, int height, byte[] out, int offset, int pixelStride) {
         ByteBuffer buffer = plane.getBuffer();
         buffer.rewind();
 

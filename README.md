@@ -18,6 +18,8 @@ For Capacitor 6, use versions 2.x.
 
 For Capacitor 7, use versions 3.x.
 
+For Capacitor 8, use versions 4.x.
+
 ## Install
 
 ```bash
@@ -360,7 +362,7 @@ toggleTorch(options: { on: boolean; }) => Promise<void>
 ### getOrientation()
 
 ```typescript
-getOrientation() => Promise<{ "orientation": "PORTRAIT" | "LANDSCAPE"; }>
+getOrientation() => Promise<{ orientation: 'PORTRAIT' | 'LANDSCAPE'; }>
 ```
 
 get the orientation of the device.

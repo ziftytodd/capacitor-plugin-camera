@@ -1,6 +1,9 @@
 # node files
-dist
 node_modules
+
+# Swift Package Manager files
+.build
+Package.resolved
 
 # iOS files
 Pods

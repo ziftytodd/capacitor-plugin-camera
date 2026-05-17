@@ -10,7 +10,6 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
@@ -18,10 +17,7 @@ import android.util.Size;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
-import androidx.camera.core.AspectRatio;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.CameraState;
@@ -35,20 +31,22 @@ import androidx.camera.core.MeteringPointFactory;
 import androidx.camera.core.Preview;
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory;
 import androidx.camera.core.UseCaseGroup;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.MediaStoreOutputOptions;
 import androidx.camera.video.PendingRecording;
 import androidx.camera.video.Quality;
 import androidx.camera.video.QualitySelector;
 import androidx.camera.video.Recorder;
 import androidx.camera.video.Recording;
 import androidx.camera.video.VideoCapture;
-import androidx.camera.video.MediaStoreOutputOptions;
 import androidx.camera.video.VideoRecordEvent;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.util.Consumer;
 import androidx.lifecycle.LifecycleOwner;
-
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -59,9 +57,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.google.common.util.concurrent.ListenableFuture;
-
-import org.json.JSONException;
-
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -73,15 +68,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.json.JSONException;
 
 @CapacitorPlugin(
-        name = "CameraPreview",
-        permissions = {
-                @Permission(strings = {Manifest.permission.CAMERA}, alias = CameraPreviewPlugin.CAMERA),
-                @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = CameraPreviewPlugin.MICROPHONE),
-        }
+    name = "CameraPreview",
+    permissions = {
+        @Permission(strings = {Manifest.permission.CAMERA}, alias = CameraPreviewPlugin.CAMERA),
+        @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = CameraPreviewPlugin.MICROPHONE)
+    }
 )
 public class CameraPreviewPlugin extends Plugin {
+
     // Permission alias constants
     static final String CAMERA = "camera";
     static final String MICROPHONE = "microphone";
@@ -106,39 +103,37 @@ public class CameraPreviewPlugin extends Plugin {
     private CameraState previousCameraStatus;
     private ScanRegion scanRegion;
 
-    static public Bitmap frameTaken;
+    public static Bitmap frameTaken;
 
     @PluginMethod
     public void initialize(PluginCall call) {
-        getActivity().runOnUiThread(new Runnable() {
-            @RequiresApi(api = Build.VERSION_CODES.P)
-            public void run() {
-                previewView = new PreviewView(getContext());
-                FrameLayout.LayoutParams cameraPreviewParams = new FrameLayout.LayoutParams(
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    previewView = new PreviewView(getContext());
+                    FrameLayout.LayoutParams cameraPreviewParams = new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT
-                );
-                ((ViewGroup) bridge.getWebView().getParent()).addView(previewView, cameraPreviewParams);
-                bridge.getWebView().bringToFront();
+                    );
+                    ((ViewGroup) bridge.getWebView().getParent()).addView(previewView, cameraPreviewParams);
+                    bridge.getWebView().bringToFront();
 
-                exec = Executors.newSingleThreadExecutor();
-                cameraProviderFuture = ProcessCameraProvider.getInstance(getContext());
-                cameraProviderFuture.addListener(() -> {
-                    try {
-                        cameraProvider = cameraProviderFuture.get();
-                        cameraSelector = new CameraSelector.Builder()
-                                .requireLensFacing(CameraSelector.LENS_FACING_BACK).build();
-                        setupUseCases(false);
-                        call.resolve();
-                    } catch (ExecutionException | InterruptedException e) {
-                        e.printStackTrace();
-                        call.reject(e.getMessage());
-                    }
-                }, getContext().getMainExecutor());
-
-
+                    exec = Executors.newSingleThreadExecutor();
+                    cameraProviderFuture = ProcessCameraProvider.getInstance(getContext());
+                    cameraProviderFuture.addListener(() -> {
+                        try {
+                            cameraProvider = cameraProviderFuture.get();
+                            cameraSelector = new CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build();
+                            setupUseCases(false);
+                            call.resolve();
+                        } catch (ExecutionException | InterruptedException e) {
+                            e.printStackTrace();
+                            call.reject(e.getMessage());
+                        }
+                    }, ContextCompat.getMainExecutor(getContext()));
+                }
             }
-        });
+        );
     }
 
     private void setupUseCases(boolean enableVideo) {
@@ -151,66 +146,69 @@ public class CameraPreviewPlugin extends Plugin {
             resolution = new Size(desiredWidth, desiredHeight);
         }
 
+        ResolutionSelector resolutionSelector = new ResolutionSelector.Builder()
+            .setResolutionStrategy(new ResolutionStrategy(resolution, ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+            .build();
+
         Preview.Builder previewBuilder = new Preview.Builder();
-        previewBuilder.setTargetResolution(resolution);
+        previewBuilder.setResolutionSelector(resolutionSelector);
         preview = previewBuilder.build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
         ImageAnalysis.Builder imageAnalysisBuilder = new ImageAnalysis.Builder();
 
-        imageAnalysisBuilder.setTargetResolution(resolution)
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST);
+        imageAnalysisBuilder.setResolutionSelector(resolutionSelector).setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST);
 
         imageAnalysis = imageAnalysisBuilder.build();
 
-        imageAnalysis.setAnalyzer(exec, new ImageAnalysis.Analyzer() {
-            @Override
-            public void analyze(@NonNull ImageProxy image) {
-                if (takeSnapshotCall != null || saveFrameCall != null) {
-                    @SuppressLint("UnsafeOptInUsageError")
-                    Bitmap bitmap = BitmapUtils.getBitmap(image);
-                    if (scanRegion != null) {
-                        int left, top, width, height;
-                        if (scanRegion.measuredByPercentage == 0) {
-                            left = scanRegion.left;
-                            top = scanRegion.top;
-                            width = scanRegion.right - scanRegion.left;
-                            height = scanRegion.bottom - scanRegion.top;
-                        } else {
-                            left = (int) ((double) scanRegion.left / 100 * bitmap.getWidth());
-                            top = (int) ((double) scanRegion.top / 100 * bitmap.getHeight());
-                            width = (int) ((double) scanRegion.right / 100 * bitmap.getWidth() - left);
-                            height = (int) ((double) scanRegion.bottom / 100 * bitmap.getHeight() - top);
+        imageAnalysis.setAnalyzer(
+            exec,
+            new ImageAnalysis.Analyzer() {
+                @Override
+                public void analyze(@NonNull ImageProxy image) {
+                    if (takeSnapshotCall != null || saveFrameCall != null) {
+                        @SuppressLint("UnsafeOptInUsageError")
+                        Bitmap bitmap = BitmapUtils.getBitmap(image);
+                        if (scanRegion != null) {
+                            int left, top, width, height;
+                            if (scanRegion.measuredByPercentage == 0) {
+                                left = scanRegion.left;
+                                top = scanRegion.top;
+                                width = scanRegion.right - scanRegion.left;
+                                height = scanRegion.bottom - scanRegion.top;
+                            } else {
+                                left = (int) (((double) scanRegion.left / 100) * bitmap.getWidth());
+                                top = (int) (((double) scanRegion.top / 100) * bitmap.getHeight());
+                                width = (int) (((double) scanRegion.right / 100) * bitmap.getWidth() - left);
+                                height = (int) (((double) scanRegion.bottom / 100) * bitmap.getHeight() - top);
+                            }
+                            bitmap = Bitmap.createBitmap(bitmap, left, top, width, height, null, false);
                         }
-                        bitmap = Bitmap.createBitmap(bitmap, left, top, width, height, null, false);
-                    }
-                    if (takeSnapshotCall != null) {
-                        int desiredQuality = 85;
-                        if (takeSnapshotCall.hasOption("quality")) {
-                            desiredQuality = takeSnapshotCall.getInt("quality");
+                        if (takeSnapshotCall != null) {
+                            int desiredQuality = 85;
+                            if (takeSnapshotCall.hasOption("quality")) {
+                                desiredQuality = takeSnapshotCall.getInt("quality");
+                            }
+                            String base64 = bitmap2Base64(bitmap, desiredQuality);
+                            JSObject result = new JSObject();
+                            result.put("base64", base64);
+                            takeSnapshotCall.resolve(result);
+                            takeSnapshotCall = null;
                         }
-                        String base64 = bitmap2Base64(bitmap, desiredQuality);
-                        JSObject result = new JSObject();
-                        result.put("base64", base64);
-                        takeSnapshotCall.resolve(result);
-                        takeSnapshotCall = null;
+                        if (saveFrameCall != null) {
+                            frameTaken = bitmap;
+                            JSObject result = new JSObject();
+                            result.put("success", true);
+                            saveFrameCall.resolve(result);
+                            saveFrameCall = null;
+                        }
                     }
-                    if (saveFrameCall != null) {
-                        frameTaken = bitmap;
-                        JSObject result = new JSObject();
-                        result.put("success", true);
-                        saveFrameCall.resolve(result);
-                        saveFrameCall = null;
-                    }
+                    image.close();
                 }
-                image.close();
             }
-        });
+        );
 
-        imageCapture =
-                new ImageCapture.Builder()
-                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
-                        .build();
+        imageCapture = new ImageCapture.Builder().setResolutionSelector(resolutionSelector).build();
 
         if (enableVideo) {
             Quality quality = Quality.HD;
@@ -219,52 +217,48 @@ public class CameraPreviewPlugin extends Plugin {
             recorderBuilder.setQualitySelector(qualitySelector);
             recorder = recorderBuilder.build();
             VideoCapture videoCapture = VideoCapture.withOutput(recorder);
-            useCaseGroup = new UseCaseGroup.Builder()
-                    .addUseCase(preview)
-                    .addUseCase(imageAnalysis)
-                    .addUseCase(videoCapture)
-                    .build();
-        }else{
-            useCaseGroup = new UseCaseGroup.Builder()
-                    .addUseCase(preview)
-                    .addUseCase(imageAnalysis)
-                    .addUseCase(imageCapture)
-                    .build();
+            useCaseGroup = new UseCaseGroup.Builder().addUseCase(preview).addUseCase(imageAnalysis).addUseCase(videoCapture).build();
+        } else {
+            useCaseGroup = new UseCaseGroup.Builder().addUseCase(preview).addUseCase(imageAnalysis).addUseCase(imageCapture).build();
         }
     }
 
     @PluginMethod
     public void startCamera(PluginCall call) {
-        getActivity().runOnUiThread(new Runnable() {
-            public void run() {
-                try {
-                    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
-                    previewView.setVisibility(View.VISIBLE);
-                    makeWebViewTransparent();
-                    triggerOnPlayed();
-                    call.resolve();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    call.reject(e.getMessage());
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    try {
+                        camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
+                        previewView.setVisibility(View.VISIBLE);
+                        makeWebViewTransparent();
+                        triggerOnPlayed();
+                        call.resolve();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        call.reject(e.getMessage());
+                    }
                 }
             }
-        });
+        );
     }
 
     @PluginMethod
     public void stopCamera(PluginCall call) {
-        getActivity().runOnUiThread(new Runnable() {
-            public void run() {
-                try {
-                    restoreWebViewBackground();
-                    previewView.setVisibility(View.INVISIBLE);
-                    cameraProvider.unbindAll();
-                    call.resolve();
-                } catch (Exception e) {
-                    call.reject(e.getMessage());
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    try {
+                        restoreWebViewBackground();
+                        previewView.setVisibility(View.INVISIBLE);
+                        cameraProvider.unbindAll();
+                        call.resolve();
+                    } catch (Exception e) {
+                        call.reject(e.getMessage());
+                    }
                 }
             }
-        });
+        );
     }
 
     private void makeWebViewTransparent() {
@@ -294,11 +288,13 @@ public class CameraPreviewPlugin extends Plugin {
     public void setScanRegion(PluginCall call) {
         JSObject region = call.getObject("region");
         try {
-            scanRegion = new ScanRegion(region.getInt("top"),
-                    region.getInt("bottom"),
-                    region.getInt("left"),
-                    region.getInt("right"),
-                    region.getInt("measuredByPercentage"));
+            scanRegion = new ScanRegion(
+                region.getInt("top"),
+                region.getInt("bottom"),
+                region.getInt("left"),
+                region.getInt("right"),
+                region.getInt("measuredByPercentage")
+            );
         } catch (JSONException e) {
             call.reject(e.getMessage());
         }
@@ -342,95 +338,99 @@ public class CameraPreviewPlugin extends Plugin {
 
     @PluginMethod
     public void selectCamera(PluginCall call) {
-        getActivity().runOnUiThread(new Runnable() {
-            @RequiresApi(api = Build.VERSION_CODES.P)
-            public void run() {
-                if (call.hasOption("cameraID")) {
-                    try {
-                        String cameraID = call.getString("cameraID");
-                        if (cameraID.equals("Front-Facing Camera")) {
-                            cameraSelector = new CameraSelector.Builder()
-                                    .requireLensFacing(CameraSelector.LENS_FACING_FRONT).build();
-                        } else {
-                            cameraSelector = new CameraSelector.Builder()
-                                    .requireLensFacing(CameraSelector.LENS_FACING_BACK).build();
-                        }
-                        if (camera != null) {
-                            if (camera.getCameraInfo().getCameraState().getValue().getType() == CameraState.Type.OPEN) {
-                                cameraProvider.unbindAll();
-                                setupUseCases(false);
-                                camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
-                                triggerOnPlayed();
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    if (call.hasOption("cameraID")) {
+                        try {
+                            String cameraID = call.getString("cameraID");
+                            if (cameraID.equals("Front-Facing Camera")) {
+                                cameraSelector = new CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_FRONT).build();
+                            } else {
+                                cameraSelector = new CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build();
                             }
+                            if (camera != null) {
+                                if (camera.getCameraInfo().getCameraState().getValue().getType() == CameraState.Type.OPEN) {
+                                    cameraProvider.unbindAll();
+                                    setupUseCases(false);
+                                    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
+                                    triggerOnPlayed();
+                                }
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            call.reject(e.getMessage());
+                            return;
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        call.reject(e.getMessage());
-                        return;
                     }
+                    JSObject result = new JSObject();
+                    result.put("success", true);
+                    call.resolve(result);
                 }
-                JSObject result = new JSObject();
-                result.put("success", true);
-                call.resolve(result);
             }
-        });
+        );
     }
 
     @PluginMethod
-    public void setLayout(PluginCall call){
+    public void setLayout(PluginCall call) {
         if (previewView != null) {
-            getActivity().runOnUiThread(new Runnable() {
-                public void run() {
-                    if (call.hasOption("width") && call.hasOption("height") && call.hasOption("left") && call.hasOption("top")) {
-                        try{
-                            double width = getLayoutValue(call.getString("width"),true);
-                            double height = getLayoutValue(call.getString("height"),false);
-                            double left = getLayoutValue(call.getString("left"),true);
-                            double top = getLayoutValue(call.getString("top"),false);
-                            previewView.setX((int) left);
-                            previewView.setY((int) top);
-                            ViewGroup.LayoutParams cameraPreviewParams = previewView.getLayoutParams();
-                            cameraPreviewParams.width = (int) width;
-                            cameraPreviewParams.height = (int) height;
-                            previewView.setLayoutParams(cameraPreviewParams);
-                        }catch(Exception e) {
-                            Log.d("Camera",e.getMessage());
+            getActivity().runOnUiThread(
+                new Runnable() {
+                    public void run() {
+                        if (call.hasOption("width") && call.hasOption("height") && call.hasOption("left") && call.hasOption("top")) {
+                            try {
+                                double width = getLayoutValue(call.getString("width"), true);
+                                double height = getLayoutValue(call.getString("height"), false);
+                                double left = getLayoutValue(call.getString("left"), true);
+                                double top = getLayoutValue(call.getString("top"), false);
+                                previewView.setX((int) left);
+                                previewView.setY((int) top);
+                                ViewGroup.LayoutParams cameraPreviewParams = previewView.getLayoutParams();
+                                cameraPreviewParams.width = (int) width;
+                                cameraPreviewParams.height = (int) height;
+                                previewView.setLayoutParams(cameraPreviewParams);
+                            } catch (Exception e) {
+                                Log.d("Camera", e.getMessage());
+                            }
                         }
+                        call.resolve();
                     }
-                    call.resolve();
                 }
-            });
-        }else{
+            );
+        } else {
             call.reject("Camera not initialized");
         }
     }
-    private double getLayoutValue(String value,boolean isWidth) {
+
+    private double getLayoutValue(String value, boolean isWidth) {
         if (value.indexOf("%") != -1) {
-            double percent = Double.parseDouble(value.substring(0,value.length()-1))/100;
+            double percent = Double.parseDouble(value.substring(0, value.length() - 1)) / 100;
             if (isWidth) {
                 return percent * Resources.getSystem().getDisplayMetrics().widthPixels;
-            }else{
+            } else {
                 return percent * Resources.getSystem().getDisplayMetrics().heightPixels;
             }
         }
         if (value.indexOf("px") != -1) {
-            return Double.parseDouble(value.substring(0,value.length()-2));
+            return Double.parseDouble(value.substring(0, value.length() - 2));
         }
         try {
             return Double.parseDouble(value);
-        }catch(Exception e) {
+        } catch (Exception e) {
             if (isWidth) {
                 return Resources.getSystem().getDisplayMetrics().widthPixels;
-            }else{
+            } else {
                 return Resources.getSystem().getDisplayMetrics().heightPixels;
             }
         }
     }
+
     private void triggerOnPlayed() {
         try {
             JSObject onPlayedResult = new JSObject();
             @SuppressLint("RestrictedApi")
-            String res = imageAnalysis.getAttachedSurfaceResolution().getWidth() + "x" + imageAnalysis.getAttachedSurfaceResolution().getHeight();
+            String res =
+                imageAnalysis.getAttachedSurfaceResolution().getWidth() + "x" + imageAnalysis.getAttachedSurfaceResolution().getHeight();
             onPlayedResult.put("resolution", res);
             notifyListeners("onPlayed", onPlayedResult);
         } catch (Exception e) {
@@ -467,57 +467,58 @@ public class CameraPreviewPlugin extends Plugin {
 
     @PluginMethod
     public void setResolution(PluginCall call) {
-        getActivity().runOnUiThread(new Runnable() {
-            @RequiresApi(api = Build.VERSION_CODES.P)
-            public void run() {
-                if (call.hasOption("resolution")) {
-                    try {
-                        int res = call.getInt("resolution");
-                        int width = 1280;
-                        int height = 720;
-                        if (res == 1) {
-                            width = 640;
-                            height = 480;
-                        } else if (res == 2) {
-                            width = 1280;
-                            height = 720;
-                        } else if (res == 3) {
-                            width = 1920;
-                            height = 1080;
-                        } else if (res == 4) {
-                            width = 2560;
-                            height = 1440;
-                        } else if (res == 5) {
-                            width = 3840;
-                            height = 2160;
-                        }
-                        desiredHeight = height;
-                        desiredWidth = width;
-                        CameraState.Type status = null;
-                        if (camera != null) {
-                            status = camera.getCameraInfo().getCameraState().getValue().getType();
-                            if (status == CameraState.Type.OPEN) {
-                                cameraProvider.unbindAll();
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    if (call.hasOption("resolution")) {
+                        try {
+                            int res = call.getInt("resolution");
+                            int width = 1280;
+                            int height = 720;
+                            if (res == 1) {
+                                width = 640;
+                                height = 480;
+                            } else if (res == 2) {
+                                width = 1280;
+                                height = 720;
+                            } else if (res == 3) {
+                                width = 1920;
+                                height = 1080;
+                            } else if (res == 4) {
+                                width = 2560;
+                                height = 1440;
+                            } else if (res == 5) {
+                                width = 3840;
+                                height = 2160;
                             }
-                        }
-                        setupUseCases(false);
-                        if (camera != null) {
-                            if (status == CameraState.Type.OPEN) {
-                                camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
-                                triggerOnPlayed();
+                            desiredHeight = height;
+                            desiredWidth = width;
+                            CameraState.Type status = null;
+                            if (camera != null) {
+                                status = camera.getCameraInfo().getCameraState().getValue().getType();
+                                if (status == CameraState.Type.OPEN) {
+                                    cameraProvider.unbindAll();
+                                }
                             }
+                            setupUseCases(false);
+                            if (camera != null) {
+                                if (status == CameraState.Type.OPEN) {
+                                    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
+                                    triggerOnPlayed();
+                                }
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            call.reject(e.getMessage());
+                            return;
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        call.reject(e.getMessage());
-                        return;
                     }
+                    JSObject result = new JSObject();
+                    result.put("success", true);
+                    call.resolve(result);
                 }
-                JSObject result = new JSObject();
-                result.put("success", true);
-                call.resolve(result);
             }
-        });
+        );
     }
 
     @SuppressLint("RestrictedApi")
@@ -528,16 +529,18 @@ public class CameraPreviewPlugin extends Plugin {
         } else {
             try {
                 JSObject result = new JSObject();
-                result.put("resolution", imageAnalysis.getAttachedSurfaceResolution().getWidth() + "x" + imageAnalysis.getAttachedSurfaceResolution().getHeight());
+                result.put(
+                    "resolution",
+                    imageAnalysis.getAttachedSurfaceResolution().getWidth() + "x" + imageAnalysis.getAttachedSurfaceResolution().getHeight()
+                );
                 call.resolve(result);
             } catch (Exception e) {
                 call.reject(e.getMessage());
             }
-
         }
     }
 
-    static public Bitmap getBitmap() {
+    public static Bitmap getBitmap() {
         try {
             return frameTaken;
         } catch (Exception e) {
@@ -563,24 +566,25 @@ public class CameraPreviewPlugin extends Plugin {
             call.reject("Camera not initialized.");
             return;
         }
-        getActivity().runOnUiThread(new Runnable() {
-            @RequiresApi(api = Build.VERSION_CODES.P)
-            public void run() {
-                if (useCaseGroup.getUseCases().contains(imageCapture) == false) {
-                    cameraProvider.unbindAll();
-                    setupUseCases(false);
-                    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
-                }
-                File file;
-                if (call.hasOption("pathToSave")) {
-                    file = new File(call.getString("pathToSave"));
-                } else {
-                    File dir = getContext().getExternalCacheDir();
-                    file = new File(dir, new Date().getTime() + ".jpg");
-                }
-                ImageCapture.OutputFileOptions outputFileOptions =
-                        new ImageCapture.OutputFileOptions.Builder(file).build();
-                imageCapture.takePicture(outputFileOptions, exec,
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    if (useCaseGroup.getUseCases().contains(imageCapture) == false) {
+                        cameraProvider.unbindAll();
+                        setupUseCases(false);
+                        camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
+                    }
+                    File file;
+                    if (call.hasOption("pathToSave")) {
+                        file = new File(call.getString("pathToSave"));
+                    } else {
+                        File dir = getContext().getExternalCacheDir();
+                        file = new File(dir, new Date().getTime() + ".jpg");
+                    }
+                    ImageCapture.OutputFileOptions outputFileOptions = new ImageCapture.OutputFileOptions.Builder(file).build();
+                    imageCapture.takePicture(
+                        outputFileOptions,
+                        exec,
                         new ImageCapture.OnImageSavedCallback() {
                             @Override
                             public void onImageSaved(ImageCapture.OutputFileResults outputFileResults) {
@@ -598,87 +602,92 @@ public class CameraPreviewPlugin extends Plugin {
                                 call.reject(exception.getMessage());
                             }
                         }
-                );
+                    );
+                }
             }
-        });
+        );
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.P)
     @PluginMethod
     public void startRecording(PluginCall call) {
         if (camera == null) {
             call.reject("Camera not initialized.");
             return;
         }
-        getActivity().runOnUiThread(new Runnable() {
-            @RequiresApi(api = Build.VERSION_CODES.P)
-            public void run() {
-                cameraProvider.unbindAll();
-                setupUseCases(true);
-                camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
-                if (recorder != null) {
-                    // create MediaStoreOutputOptions for our recorder: resulting our recording!
-                    String name = "CameraX-recording-" + System.currentTimeMillis() + ".mp4";
-                    ContentValues contentValues = new ContentValues();
-                    contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        getActivity().runOnUiThread(
+            new Runnable() {
+                public void run() {
+                    cameraProvider.unbindAll();
+                    setupUseCases(true);
+                    camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
+                    if (recorder != null) {
+                        // create MediaStoreOutputOptions for our recorder: resulting our recording!
+                        String name = "CameraX-recording-" + System.currentTimeMillis() + ".mp4";
+                        ContentValues contentValues = new ContentValues();
+                        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
 
-                    MediaStoreOutputOptions mediaStoreOutput = new MediaStoreOutputOptions.Builder(
+                        MediaStoreOutputOptions mediaStoreOutput = new MediaStoreOutputOptions.Builder(
                             getContext().getContentResolver(),
-                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        )
                             .setContentValues(contentValues)
                             .build();
 
-                    // configure Recorder and Start recording to the mediaStoreOutput.
+                        // configure Recorder and Start recording to the mediaStoreOutput.
 
-                    PendingRecording pendingRecording = recorder.prepareRecording(getContext(), mediaStoreOutput);
+                        PendingRecording pendingRecording = recorder.prepareRecording(getContext(), mediaStoreOutput);
 
-                    if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                        // TODO: Consider calling
-                        //    ActivityCompat#requestPermissions
-                        // here to request the missing permissions, and then overriding
-                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                        //                                          int[] grantResults)
-                        // to handle the case where the user grants the permission. See the documentation
-                        // for ActivityCompat#requestPermissions for more details.
-                    }else{
-                        pendingRecording.withAudioEnabled();
-                    }
-                    Consumer<VideoRecordEvent> captureListener = new Consumer<VideoRecordEvent>() {
-                        @Override
-                        public void accept(VideoRecordEvent videoRecordEvent) {
-                            Log.d("Camera",videoRecordEvent.toString());
-                            if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
-                                Log.d("Camera","finalize");
-                                Uri uri = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
-                                String path = uri.getPath();
+                        if (
+                            ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) !=
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            // TODO: Consider calling
+                            //    ActivityCompat#requestPermissions
+                            // here to request the missing permissions, and then overriding
+                            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                            //                                          int[] grantResults)
+                            // to handle the case where the user grants the permission. See the documentation
+                            // for ActivityCompat#requestPermissions for more details.
+                        } else {
+                            pendingRecording.withAudioEnabled();
+                        }
+                        Consumer<VideoRecordEvent> captureListener = new Consumer<VideoRecordEvent>() {
+                            @Override
+                            public void accept(VideoRecordEvent videoRecordEvent) {
+                                Log.d("Camera", videoRecordEvent.toString());
+                                if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
+                                    Log.d("Camera", "finalize");
+                                    Uri uri = ((VideoRecordEvent.Finalize) videoRecordEvent).getOutputResults().getOutputUri();
+                                    String path = uri.getPath();
 
-                                if (stopRecordingCall != null) {
-                                    JSObject result = new JSObject();
-                                    if (stopRecordingCall.getBoolean("includeBase64",false)) {
-                                        try {
-                                            InputStream iStream = getContext().getContentResolver().openInputStream(uri);
-                                            byte[] inputData = getBytes(iStream);
-                                            String base64 = Base64.encodeToString(inputData, Base64.DEFAULT);
-                                            result.put("base64",base64);
-                                        } catch (IOException e) {
-                                            throw new RuntimeException(e);
+                                    if (stopRecordingCall != null) {
+                                        JSObject result = new JSObject();
+                                        if (stopRecordingCall.getBoolean("includeBase64", false)) {
+                                            try {
+                                                InputStream iStream = getContext().getContentResolver().openInputStream(uri);
+                                                byte[] inputData = getBytes(iStream);
+                                                String base64 = Base64.encodeToString(inputData, Base64.DEFAULT);
+                                                result.put("base64", base64);
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
                                         }
+                                        result.put("path", path);
+                                        recorder = null;
+                                        stopRecordingCall.resolve(result);
+                                        stopRecordingCall = null;
                                     }
-                                    result.put("path",path);
-                                    recorder = null;
-                                    stopRecordingCall.resolve(result);
-                                    stopRecordingCall = null;
                                 }
                             }
-                        }
-                    };
-                    currentRecording = pendingRecording.start(getContext().getMainExecutor(),captureListener);
-                    call.resolve();
-                }else{
-                    call.reject("Recording is not ready");
+                        };
+                        currentRecording = pendingRecording.start(ContextCompat.getMainExecutor(getContext()), captureListener);
+                        call.resolve();
+                    } else {
+                        call.reject("Recording is not ready");
+                    }
                 }
             }
-        });
+        );
     }
 
     private byte[] getBytes(InputStream inputStream) throws IOException {
@@ -694,16 +703,17 @@ public class CameraPreviewPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void stopRecording(PluginCall call){
-        getActivity().runOnUiThread(new Runnable() {
-
-            @Override
-            public void run() {
-                call.setKeepAlive(true);
-                stopRecordingCall = call;
-                currentRecording.stop();
+    public void stopRecording(PluginCall call) {
+        getActivity().runOnUiThread(
+            new Runnable() {
+                @Override
+                public void run() {
+                    call.setKeepAlive(true);
+                    stopRecordingCall = call;
+                    currentRecording.stop();
+                }
             }
-        });
+        );
     }
 
     public static byte[] convertFileToByteArray(File f) {
@@ -724,23 +734,23 @@ public class CameraPreviewPlugin extends Plugin {
         return byteArray;
     }
 
-    public static String bitmap2Base64(Bitmap bitmap,int quality) {
+    public static String bitmap2Base64(Bitmap bitmap, int quality) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream);
         return Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT);
     }
 
     @PluginMethod
-    public void isOpen(PluginCall call){
+    public void isOpen(PluginCall call) {
         if (camera != null) {
             JSObject result = new JSObject();
             if (camera.getCameraInfo().getCameraState().getValue().getType() == CameraState.Type.OPEN) {
-                result.put("isOpen",true);
-            }else{
-                result.put("isOpen",false);
+                result.put("isOpen", true);
+            } else {
+                result.put("isOpen", false);
             }
             call.resolve(result);
-        }else {
+        } else {
             call.reject("Camera not initialized.");
         }
     }
@@ -769,20 +779,18 @@ public class CameraPreviewPlugin extends Plugin {
 
     @Override
     protected void handleOnConfigurationChanged(Configuration newConfig) {
-        notifyListeners("onOrientationChanged",null);
+        notifyListeners("onOrientationChanged", null);
         super.handleOnConfigurationChanged(newConfig);
     }
-
-
 
     @PluginMethod
     public void requestCameraPermission(PluginCall call) {
         boolean hasCameraPerms = getPermissionState(CAMERA) == PermissionState.GRANTED;
         if (hasCameraPerms == false) {
-            Log.d("Camera","no camera permission. request permission.");
-            String[] aliases = new String[] { CAMERA };
+            Log.d("Camera", "no camera permission. request permission.");
+            String[] aliases = new String[] {CAMERA};
             requestPermissionForAliases(aliases, call, "cameraPermissionsCallback");
-        }else{
+        } else {
             call.resolve();
         }
     }
@@ -792,7 +800,7 @@ public class CameraPreviewPlugin extends Plugin {
         boolean hasCameraPerms = getPermissionState(CAMERA) == PermissionState.GRANTED;
         if (hasCameraPerms) {
             call.resolve();
-        }else {
+        } else {
             call.reject("Permission not granted.");
         }
     }
@@ -801,10 +809,10 @@ public class CameraPreviewPlugin extends Plugin {
     public void requestMicroPhonePermission(PluginCall call) {
         boolean hasCameraPerms = getPermissionState(MICROPHONE) == PermissionState.GRANTED;
         if (hasCameraPerms == false) {
-            Log.d("Camera","no microphone permission. request permission.");
-            String[] aliases = new String[] { MICROPHONE };
+            Log.d("Camera", "no microphone permission. request permission.");
+            String[] aliases = new String[] {MICROPHONE};
             requestPermissionForAliases(aliases, call, "microphonePermissionsCallback");
-        }else{
+        } else {
             call.resolve();
         }
     }
@@ -814,7 +822,7 @@ public class CameraPreviewPlugin extends Plugin {
         boolean hasPerms = getPermissionState(MICROPHONE) == PermissionState.GRANTED;
         if (hasPerms) {
             call.resolve();
-        }else {
+        } else {
             call.reject("Permission not granted.");
         }
     }
@@ -824,11 +832,10 @@ public class CameraPreviewPlugin extends Plugin {
         int orientation = getContext().getResources().getConfiguration().orientation;
         JSObject result = new JSObject();
         if (orientation == Configuration.ORIENTATION_PORTRAIT) {
-            result.put("orientation","PORTRAIT");
-        }else{
-            result.put("orientation","LANDSCAPE");
+            result.put("orientation", "PORTRAIT");
+        } else {
+            result.put("orientation", "LANDSCAPE");
         }
         call.resolve(result);
     }
-
 }
