@@ -111,6 +111,13 @@ public class CameraPreviewPlugin extends Plugin {
     private OrientationEventListener orientationEventListener;
 
     /**
+     * Whether the listener is meant to be running, i.e. the camera has been started and not
+     * stopped. Kept across a pause so resume can restore it: CameraX may re-attach the bound use
+     * cases on its own when the lifecycle comes back, and nothing else would turn tracking on.
+     */
+    private boolean orientationUpdatesWanted;
+
+    /**
      * The rotation the next capture is stamped with. Written from the orientation listener
      * and read when a photo is taken, so it is kept volatile.
      */
@@ -248,7 +255,7 @@ public class CameraPreviewPlugin extends Plugin {
                         camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
                         previewView.setVisibility(View.VISIBLE);
                         makeWebViewTransparent();
-                        enableOrientationUpdates();
+                        setOrientationUpdatesEnabled(true);
                         triggerOnPlayed();
                         call.resolve();
                     } catch (Exception e) {
@@ -266,7 +273,7 @@ public class CameraPreviewPlugin extends Plugin {
             new Runnable() {
                 public void run() {
                     try {
-                        disableOrientationUpdates();
+                        setOrientationUpdatesEnabled(false);
                         restoreWebViewBackground();
                         previewView.setVisibility(View.INVISIBLE);
                         cameraProvider.unbindAll();
@@ -280,12 +287,24 @@ public class CameraPreviewPlugin extends Plugin {
     }
 
     /**
-     * Tracks the physical orientation of the device while the camera runs. The activity
-     * hosting the preview may be locked to portrait - Treads locks it - in which case the
-     * display rotation CameraX would otherwise use is always ROTATION_0 and a photo taken
-     * with the phone held sideways comes out turned 90 degrees.
+     * Starts or stops tracking the physical orientation of the device, and remembers which was
+     * asked for so a pause/resume can restore it. The activity hosting the preview may be locked
+     * to portrait - Treads locks it - in which case the display rotation CameraX would otherwise
+     * use is always ROTATION_0 and a photo taken with the phone held sideways comes out turned
+     * 90 degrees.
      */
-    private void enableOrientationUpdates() {
+    private void setOrientationUpdatesEnabled(boolean enabled) {
+        orientationUpdatesWanted = enabled;
+        applyOrientationUpdates(enabled);
+    }
+
+    private void applyOrientationUpdates(boolean enabled) {
+        if (enabled == false) {
+            if (orientationEventListener != null) {
+                orientationEventListener.disable();
+            }
+            return;
+        }
         if (orientationEventListener == null) {
             orientationEventListener = new OrientationEventListener(getContext()) {
                 @Override
@@ -308,12 +327,6 @@ public class CameraPreviewPlugin extends Plugin {
             orientationEventListener.enable();
         } else {
             Log.d("Camera", "device cannot report its orientation; captures stay at rotation " + targetRotation);
-        }
-    }
-
-    private void disableOrientationUpdates() {
-        if (orientationEventListener != null) {
-            orientationEventListener.disable();
         }
     }
 
@@ -696,21 +709,29 @@ public class CameraPreviewPlugin extends Plugin {
             int sourceWidth = source.getWidth();
             int sourceHeight = source.getHeight();
 
-            Matrix matrix = new Matrix();
-            matrix.postRotate(transform.degrees);
-            matrix.postScale(transform.flipX ? -1f : 1f, transform.flipY ? -1f : 1f);
-            Bitmap upright = Bitmap.createBitmap(source, 0, 0, sourceWidth, sourceHeight, matrix, true);
+            Bitmap upright;
+            try {
+                Matrix matrix = new Matrix();
+                matrix.postRotate(transform.degrees);
+                matrix.postScale(transform.flipX ? -1f : 1f, transform.flipY ? -1f : 1f);
+                // The identity transform returned above, so this always allocates a second
+                // bitmap rather than handing back the source.
+                upright = Bitmap.createBitmap(source, 0, 0, sourceWidth, sourceHeight, matrix, true);
+            } finally {
+                // The source is dead once it has been rotated. Freeing it here also covers an
+                // OutOfMemoryError inside createBitmap, the likeliest failure on a big capture.
+                source.recycle();
+            }
 
-            rotatedFile = new File(file.getAbsolutePath() + ".rotated");
-            try (FileOutputStream out = new FileOutputStream(rotatedFile)) {
-                if (upright.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) == false) {
-                    throw new IOException("could not re-encode the rotated capture as JPEG");
+            try {
+                rotatedFile = new File(file.getAbsolutePath() + ".rotated");
+                try (FileOutputStream out = new FileOutputStream(rotatedFile)) {
+                    if (upright.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) == false) {
+                        throw new IOException("could not re-encode the rotated capture as JPEG");
+                    }
                 }
             } finally {
-                if (upright != source) {
-                    upright.recycle();
-                }
-                source.recycle();
+                upright.recycle();
             }
 
             // Re-encoding drops the EXIF block, so state plainly that the pixels are upright.
@@ -881,7 +902,8 @@ public class CameraPreviewPlugin extends Plugin {
 
     @Override
     protected void handleOnPause() {
-        disableOrientationUpdates();
+        // Suspend tracking, but remember that the camera wants it back on resume.
+        applyOrientationUpdates(false);
         if (camera != null) {
             CameraState cameraStatus = camera.getCameraInfo().getCameraState().getValue();
             previousCameraStatus = cameraStatus;
@@ -897,9 +919,9 @@ public class CameraPreviewPlugin extends Plugin {
         if (camera != null) {
             if (previousCameraStatus.getType() == CameraState.Type.OPEN) {
                 camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
-                enableOrientationUpdates();
             }
         }
+        applyOrientationUpdates(orientationUpdatesWanted);
         super.handleOnResume();
     }
 
