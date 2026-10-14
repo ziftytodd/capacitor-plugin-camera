@@ -1,6 +1,6 @@
 {
   "name": "capacitor-plugin-camera",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "private": true,
   "description": "A capacitor camera plugin",
   "main": "dist/plugin.cjs.js",
