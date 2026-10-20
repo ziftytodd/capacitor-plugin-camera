@@ -7,13 +7,17 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
 import android.util.Size;
+import android.view.OrientationEventListener;
+import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -46,6 +50,7 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.util.Consumer;
+import androidx.exifinterface.media.ExifInterface;
 import androidx.lifecycle.LifecycleOwner;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -61,6 +66,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Date;
@@ -102,6 +108,23 @@ public class CameraPreviewPlugin extends Plugin {
     private int desiredHeight = 720;
     private CameraState previousCameraStatus;
     private ScanRegion scanRegion;
+    private OrientationEventListener orientationEventListener;
+
+    /**
+     * Whether the listener is meant to be running, i.e. the camera has been started and not
+     * stopped. Kept across a pause so resume can restore it: CameraX may re-attach the bound use
+     * cases on its own when the lifecycle comes back, and nothing else would turn tracking on.
+     */
+    private boolean orientationUpdatesWanted;
+
+    /**
+     * The rotation the next capture is stamped with. Written from the orientation listener
+     * and read when a photo is taken, so it is kept volatile.
+     */
+    private volatile int targetRotation = Surface.ROTATION_0;
+
+    /** CameraX's own JPEG quality for a non-latency-optimised capture. */
+    private static final int JPEG_QUALITY = 95;
 
     public static Bitmap frameTaken;
 
@@ -208,7 +231,7 @@ public class CameraPreviewPlugin extends Plugin {
             }
         );
 
-        imageCapture = new ImageCapture.Builder().setResolutionSelector(resolutionSelector).build();
+        imageCapture = new ImageCapture.Builder().setResolutionSelector(resolutionSelector).setTargetRotation(targetRotation).build();
 
         if (enableVideo) {
             Quality quality = Quality.HD;
@@ -232,6 +255,7 @@ public class CameraPreviewPlugin extends Plugin {
                         camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
                         previewView.setVisibility(View.VISIBLE);
                         makeWebViewTransparent();
+                        setOrientationUpdatesEnabled(true);
                         triggerOnPlayed();
                         call.resolve();
                     } catch (Exception e) {
@@ -249,6 +273,7 @@ public class CameraPreviewPlugin extends Plugin {
             new Runnable() {
                 public void run() {
                     try {
+                        setOrientationUpdatesEnabled(false);
                         restoreWebViewBackground();
                         previewView.setVisibility(View.INVISIBLE);
                         cameraProvider.unbindAll();
@@ -259,6 +284,50 @@ public class CameraPreviewPlugin extends Plugin {
                 }
             }
         );
+    }
+
+    /**
+     * Starts or stops tracking the physical orientation of the device, and remembers which was
+     * asked for so a pause/resume can restore it. The activity hosting the preview may be locked
+     * to portrait - Treads locks it - in which case the display rotation CameraX would otherwise
+     * use is always ROTATION_0 and a photo taken with the phone held sideways comes out turned
+     * 90 degrees.
+     */
+    private void setOrientationUpdatesEnabled(boolean enabled) {
+        orientationUpdatesWanted = enabled;
+        applyOrientationUpdates(enabled);
+    }
+
+    private void applyOrientationUpdates(boolean enabled) {
+        if (enabled == false) {
+            if (orientationEventListener != null) {
+                orientationEventListener.disable();
+            }
+            return;
+        }
+        if (orientationEventListener == null) {
+            orientationEventListener = new OrientationEventListener(getContext()) {
+                @Override
+                public void onOrientationChanged(int degrees) {
+                    if (degrees == OrientationEventListener.ORIENTATION_UNKNOWN) {
+                        // Device lying flat or the reading is unusable: keep the last rotation.
+                        return;
+                    }
+                    int rotation = CaptureRotation.surfaceRotationForDeviceOrientation(degrees);
+                    if (rotation != targetRotation) {
+                        targetRotation = rotation;
+                        if (imageCapture != null) {
+                            imageCapture.setTargetRotation(rotation);
+                        }
+                    }
+                }
+            };
+        }
+        if (orientationEventListener.canDetectOrientation()) {
+            orientationEventListener.enable();
+        } else {
+            Log.d("Camera", "device cannot report its orientation; captures stay at rotation " + targetRotation);
+        }
     }
 
     private void makeWebViewTransparent() {
@@ -582,12 +651,15 @@ public class CameraPreviewPlugin extends Plugin {
                         file = new File(dir, new Date().getTime() + ".jpg");
                     }
                     ImageCapture.OutputFileOptions outputFileOptions = new ImageCapture.OutputFileOptions.Builder(file).build();
+                    // The listener may not have fired since the last tilt; stamp the rotation we hold now.
+                    imageCapture.setTargetRotation(targetRotation);
                     imageCapture.takePicture(
                         outputFileOptions,
                         exec,
                         new ImageCapture.OnImageSavedCallback() {
                             @Override
                             public void onImageSaved(ImageCapture.OutputFileResults outputFileResults) {
+                                normalizeOrientation(file);
                                 JSObject result = new JSObject();
                                 if (call.getBoolean("includeBase64", false)) {
                                     String base64 = Base64.encodeToString(convertFileToByteArray(file), Base64.DEFAULT);
@@ -606,6 +678,79 @@ public class CameraPreviewPlugin extends Plugin {
                 }
             }
         );
+    }
+
+    /**
+     * Rewrites a freshly captured JPEG so that it is upright in its pixels, not only in its
+     * EXIF orientation tag: the delivery partners this photo ends up with ignore EXIF.
+     *
+     * <p>Best effort by design. The file is only replaced once a complete rotated JPEG has
+     * been written next to it, and any failure - including running out of memory on the
+     * decode - leaves the captured file exactly as CameraX wrote it, so a shot is never lost.
+     */
+    private static void normalizeOrientation(File file) {
+        File rotatedFile = null;
+        try {
+            int orientation = new ExifInterface(file.getAbsolutePath()).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            );
+            CaptureRotation.Transform transform = CaptureRotation.transformForExifOrientation(orientation);
+            if (transform.isIdentity()) {
+                return;
+            }
+
+            Bitmap source = BitmapFactory.decodeFile(file.getAbsolutePath());
+            if (source == null) {
+                Log.d("Camera", "could not decode " + file.getName() + "; keeping it as captured");
+                return;
+            }
+
+            int sourceWidth = source.getWidth();
+            int sourceHeight = source.getHeight();
+
+            Bitmap upright;
+            try {
+                Matrix matrix = new Matrix();
+                matrix.postRotate(transform.degrees);
+                matrix.postScale(transform.flipX ? -1f : 1f, transform.flipY ? -1f : 1f);
+                // The identity transform returned above, so this always allocates a second
+                // bitmap rather than handing back the source.
+                upright = Bitmap.createBitmap(source, 0, 0, sourceWidth, sourceHeight, matrix, true);
+            } finally {
+                // The source is dead once it has been rotated. Freeing it here also covers an
+                // OutOfMemoryError inside createBitmap, the likeliest failure on a big capture.
+                source.recycle();
+            }
+
+            try {
+                rotatedFile = new File(file.getAbsolutePath() + ".rotated");
+                try (FileOutputStream out = new FileOutputStream(rotatedFile)) {
+                    if (upright.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) == false) {
+                        throw new IOException("could not re-encode the rotated capture as JPEG");
+                    }
+                }
+            } finally {
+                upright.recycle();
+            }
+
+            // Re-encoding drops the EXIF block, so state plainly that the pixels are upright.
+            ExifInterface rotatedExif = new ExifInterface(rotatedFile.getAbsolutePath());
+            rotatedExif.setAttribute(ExifInterface.TAG_ORIENTATION, String.valueOf(ExifInterface.ORIENTATION_NORMAL));
+            rotatedExif.saveAttributes();
+
+            if (rotatedFile.renameTo(file) == false) {
+                throw new IOException("could not move the rotated capture onto " + file.getAbsolutePath());
+            }
+            rotatedFile = null;
+            Log.d("Camera", "normalized a " + sourceWidth + "x" + sourceHeight + " capture from EXIF orientation " + orientation);
+        } catch (Exception | OutOfMemoryError e) {
+            Log.e("Camera", "could not normalize the capture orientation; keeping the file as captured", e);
+        } finally {
+            if (rotatedFile != null && rotatedFile.exists() && rotatedFile.delete() == false) {
+                Log.d("Camera", "could not clean up " + rotatedFile.getAbsolutePath());
+            }
+        }
     }
 
     @PluginMethod
@@ -757,6 +902,8 @@ public class CameraPreviewPlugin extends Plugin {
 
     @Override
     protected void handleOnPause() {
+        // Suspend tracking, but remember that the camera wants it back on resume.
+        applyOrientationUpdates(false);
         if (camera != null) {
             CameraState cameraStatus = camera.getCameraInfo().getCameraState().getValue();
             previousCameraStatus = cameraStatus;
@@ -774,6 +921,7 @@ public class CameraPreviewPlugin extends Plugin {
                 camera = cameraProvider.bindToLifecycle((LifecycleOwner) getContext(), cameraSelector, useCaseGroup);
             }
         }
+        applyOrientationUpdates(orientationUpdatesWanted);
         super.handleOnResume();
     }
 
